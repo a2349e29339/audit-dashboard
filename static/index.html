@@ -1,0 +1,339 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Personal Audit</title>
+<link rel="stylesheet" href="/static/style.css">
+</head>
+<body>
+<header class="topbar">
+  <div>
+    <h1>Personal Audit</h1>
+    <div class="sub" id="syncStatus">Local only · not synced yet</div>
+  </div>
+  <div class="spacer"></div>
+  <nav class="tabs" id="tabs">
+    <button data-view="overview" class="active">Overview</button>
+    <button data-view="transactions">Transactions</button>
+    <button data-view="income">Income</button>
+    <button data-view="flow">Flow</button>
+    <button data-view="gambling">Gambling</button>
+    <button data-view="review">Review <span class="badge" id="flagCount" hidden>0</span></button>
+    <button data-view="accounts">Accounts</button>
+    <button data-view="settings">Settings</button>
+  </nav>
+</header>
+
+<main>
+  <!-- ============ OVERVIEW ============ -->
+  <section class="view active" id="view-overview">
+    <div class="tiles" id="rnTiles"></div>
+    <div class="note" id="upcomingStrip" style="margin:-4px 2px 16px"></div>
+
+    <div class="card">
+      <h2 id="monthTitle">Last full month</h2>
+      <p class="desc">Cash basis — what actually arrived, left, and stayed. Arrows compare against your trailing 3-month average.</p>
+      <div class="eq-row" id="eqRow"></div>
+      <p class="note" id="eqNote" style="margin-top:8px"></p>
+    </div>
+
+    <div class="filters">
+      <div class="seg" id="rangeSeg">
+        <button data-range="tm">This month</button>
+        <button data-range="lm">Last month</button>
+        <button data-range="6m" class="active">6 months</button>
+        <button data-range="ytd">YTD</button>
+        <button data-range="1y">1 year</button>
+      </div>
+    </div>
+
+    <div class="card">
+      <div class="ts-head">
+        <div>
+          <h2>Spending &amp; net worth over time</h2>
+          <p class="desc">Spending per period, and total net worth at each point. Cash accounts are
+            reconstructed from transactions; investment balances step between sync snapshots.</p>
+        </div>
+        <div class="ts-controls">
+          <div class="seg" id="granSeg">
+            <button data-g="daily">Daily</button>
+            <button data-g="weekly" class="active">Weekly</button>
+            <button data-g="monthly">Monthly</button>
+          </div>
+          <div class="seg" id="spendModeSeg">
+            <button data-m="variable" class="active" title="Excludes rent, utilities, insurance, subscriptions, and the parking benefit; unlinked-card payments are spread over 30 days">Variable only</button>
+            <button data-m="all" title="Everything, with rent spread over its month">All spending</button>
+          </div>
+        </div>
+      </div>
+      <div class="ts-sub" id="tsSpendLabel">Variable spending</div>
+      <div id="tsSpend"></div>
+      <div class="ts-sub">Net worth</div>
+      <div id="tsNetWorth"></div>
+    </div>
+
+    <div class="card">
+      <h2>Where the money went</h2>
+      <p class="desc">Spending by category for the selected period.</p>
+      <div id="categoryChart"></div>
+    </div>
+
+    <div class="card">
+      <h2>Trips</h2>
+      <p class="desc" id="tripsDesc"></p>
+      <div id="tripsList"></div>
+    </div>
+  </section>
+
+  <!-- ============ TRANSACTIONS ============ -->
+  <section class="view" id="view-transactions">
+    <div class="filters">
+      <div class="seg" id="txnRangeSeg">
+        <button data-range="tm">This month</button>
+        <button data-range="lm">Last month</button>
+        <button data-range="3m" class="active">3 months</button>
+        <button data-range="6m">6 months</button>
+        <button data-range="1y">1 year</button>
+      </div>
+      <select id="txnAccount"><option value="">All accounts</option></select>
+      <select id="txnCategory"><option value="">All categories</option><option value="uncategorized">Uncategorized</option></select>
+      <input type="search" id="txnSearch" placeholder="Search description…">
+      <label class="ts-toggle" title="Show trades and coin movements inside brokerage/retirement accounts — portfolio churn, not cash flow">
+        <input type="checkbox" id="txnInvestment"> Investment activity
+      </label>
+    </div>
+    <div class="card">
+      <table>
+        <thead><tr>
+          <th>Date</th><th>Account</th><th>Description</th><th>Category</th><th class="num">Amount</th>
+        </tr></thead>
+        <tbody id="txnBody"></tbody>
+      </table>
+      <div class="empty" id="txnEmpty" hidden>No transactions in this range.</div>
+    </div>
+  </section>
+
+  <!-- ============ FLOW ============ -->
+  <section class="view" id="view-flow">
+    <div class="card">
+      <div class="ts-head">
+        <div>
+          <h2>Where your money comes from and goes</h2>
+          <p class="desc" id="flowDesc">Average per month. Left: income sources. Right: spending by category plus investment contributions. Internal transfers and card payoffs are excluded.</p>
+        </div>
+        <div class="seg" id="flowMonthSeg"></div>
+      </div>
+      <div id="flowChart"></div>
+      <div id="flowDetail" hidden class="flow-detail">
+        <div class="fd-head">
+          <b id="fdTitle"></b><span class="note" id="fdMeta"></span>
+          <button class="btn secondary btn-sm" id="fdClose">Close</button>
+        </div>
+        <p class="note" id="fdExplain" style="max-width:none"></p>
+        <div id="fdBody"></div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ============ GAMBLING ============ -->
+  <section class="view" id="view-gambling">
+    <div class="tiles" id="gamblingTiles"></div>
+
+    <div class="card">
+      <h2>Bankroll funding by month</h2>
+      <p class="desc">Money moved between your bank accounts and betting platforms. Deposits are treated as bankroll transfers, not spending — the real cost of gambling is bet P/L below.</p>
+      <div class="legend">
+        <span class="key"><span class="swatch" style="background:var(--series-2)"></span>Deposited</span>
+        <span class="key"><span class="swatch" style="background:var(--series-1)"></span>Withdrawn</span>
+      </div>
+      <div id="gamblingFundingChart"></div>
+    </div>
+
+    <div class="grid-2">
+      <div class="card">
+        <h2>By platform</h2>
+        <p class="desc">Bank-side flows per book, from your synced transactions.</p>
+        <table>
+          <thead><tr><th>Platform</th><th class="num">Deposited</th><th class="num">Withdrawn</th><th class="num">Net funded</th></tr></thead>
+          <tbody id="platformBody"></tbody>
+        </table>
+      </div>
+      <div class="card">
+        <h2>Bankroll snapshot</h2>
+        <p class="desc">Enter what's currently sitting across your betting accounts (from Pikkit). The dashboard rolls it forward with each deposit/withdrawal and counts it in net worth.</p>
+        <div class="rules-add">
+          <input id="snapAmount" type="number" step="0.01" placeholder="$ total on platforms" style="width:160px">
+          <input id="snapDate" type="date">
+          <button class="btn" id="btnAddSnapshot">Save snapshot</button>
+        </div>
+        <div id="snapList" class="note"></div>
+      </div>
+    </div>
+
+    <div class="card">
+      <h2>Bet performance (Pikkit)</h2>
+      <p class="desc">Pikkit has no public API, but it can export your bet history as a CSV (in the app: profile → export). Import it here — re-imports skip duplicates and settle pending bets.</p>
+      <div class="row" style="display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin-bottom:10px">
+        <input type="file" id="betsFile" accept=".csv,.txt">
+        <button class="btn" id="btnImportBets">Import bets</button>
+        <span class="note" id="betsStatus"></span>
+      </div>
+      <div id="betsSummary"></div>
+      <div id="betsPLChart"></div>
+      <table id="betsBookTable" hidden>
+        <thead><tr><th>Book</th><th class="num">Bets</th><th class="num">Staked</th><th class="num">Profit</th><th class="num">ROI</th></tr></thead>
+        <tbody id="betsBookBody"></tbody>
+      </table>
+    </div>
+  </section>
+
+  <!-- ============ INCOME ============ -->
+  <section class="view" id="view-income">
+    <div class="card">
+      <h2>Income watch</h2>
+      <p class="desc">Each source compared against what it <em>should</em> look like — late or short payments surface here.</p>
+      <div id="incomeWatch"></div>
+    </div>
+    <div class="card">
+      <h2>Expected vs. actual by month</h2>
+      <p class="desc">Inflows to cash accounts matched to each source's pattern. Transfers between your own accounts are excluded.</p>
+      <div id="incomeGrid"></div>
+    </div>
+    <div class="card">
+      <h2>Income sources</h2>
+      <p class="desc">Define what your income should look like: paycheck amount and cadence for salary, a monthly estimate for side gigs (cadence "irregular").</p>
+      <div class="rules-add">
+        <input id="srcName" placeholder="Name — e.g. Salary, DoorDash gig">
+        <input id="srcPattern" placeholder="matches description… e.g. 'acme payroll'">
+        <input id="srcAmount" type="number" step="0.01" placeholder="$ per payment" style="width:120px">
+        <select id="srcCadence">
+          <option value="weekly">Weekly</option>
+          <option value="biweekly" selected>Biweekly</option>
+          <option value="semimonthly">Twice a month</option>
+          <option value="monthly">Monthly</option>
+          <option value="irregular">Irregular (amount = per month)</option>
+        </select>
+        <button class="btn" id="btnAddSource">Add source</button>
+      </div>
+      <div id="srcEmpty" class="empty" hidden>No sources yet — add your salary above to start tracking expected vs. actual.</div>
+    </div>
+  </section>
+
+  <!-- ============ REVIEW ============ -->
+  <section class="view" id="view-review">
+    <div class="card">
+      <h2>Review queue</h2>
+      <p class="desc">Unreviewed activity from the last 60 days that looks unusual: large outflows vs. your own baseline, possible duplicate charges, first-time merchants, and uncategorized items. Mark items reviewed to clear them.</p>
+      <div id="flagList"></div>
+      <div class="empty" id="flagEmpty" hidden>Nothing needs review. ✓</div>
+    </div>
+  </section>
+
+  <!-- ============ ACCOUNTS ============ -->
+  <section class="view" id="view-accounts">
+    <div class="acct-grid" id="acctGrid"></div>
+  </section>
+
+  <!-- ============ SETTINGS ============ -->
+  <section class="view settings" id="view-settings">
+    <div class="card">
+      <h2>SimpleFIN connection</h2>
+      <p class="note">
+        To pull real data: create an account at <b>SimpleFIN Bridge</b> (beta-bridge.simplefin.org),
+        connect your banks and brokerages there, then generate a <b>setup token</b> and paste it below.
+        The token is exchanged once for an access URL that is stored only in the local database on this
+        Mac (<code>data/audit.db</code>) — it is never displayed again or sent anywhere else.
+      </p>
+      <div class="row" id="sfDisconnected">
+        <textarea id="setupToken" placeholder="Paste your one-time SimpleFIN setup token here"></textarea>
+      </div>
+      <div class="row">
+        <button class="btn" id="btnConnect">Connect</button>
+        <button class="btn secondary" id="btnSync">Sync now</button>
+        <select id="syncDays">
+          <option value="90">Last 90 days</option>
+          <option value="180">Last 180 days</option>
+          <option value="365">Last 365 days</option>
+        </select>
+        <button class="btn danger-outline" id="btnDisconnect">Disconnect</button>
+      </div>
+      <p class="note" id="sfStatus"></p>
+    </div>
+
+    <div class="card">
+      <h2>Import a statement file (CSV / OFX / QFX)</h2>
+      <p class="note">For institutions SimpleFIN can't reach (e.g. Amex right now): download activity
+        from the institution's website — QFX/OFX preferred, CSV works too — and import it here.
+        Re-importing the same file skips duplicates, and card payments are automatically matched
+        against your checking account as transfers.</p>
+      <div class="row">
+        <input type="file" id="importFile" accept=".csv,.ofx,.qfx,.qbo,.txt">
+        <input id="importName" placeholder="Account name — e.g. Amex Blue Cash">
+        <select id="importType">
+          <option value="credit" selected>Credit card</option>
+          <option value="checking">Checking</option>
+          <option value="savings">Savings</option>
+        </select>
+      </div>
+      <div class="row">
+        <label class="note"><input type="checkbox" id="importInvert" checked>
+          CSV lists charges as positive numbers (Amex-style) — flip signs on import</label>
+      </div>
+      <div class="row"><button class="btn" id="btnImport">Import</button></div>
+      <p class="note" id="importStatus"></p>
+    </div>
+
+    <div class="card">
+      <h2>Demo data</h2>
+      <p class="note">Sample accounts and a year of transactions so you can explore the dashboard before
+        linking real accounts. Clearing removes only demo records.</p>
+      <div class="row">
+        <button class="btn secondary" id="btnSeedDemo">Seed demo data</button>
+        <button class="btn danger-outline" id="btnClearDemo">Clear demo data</button>
+      </div>
+    </div>
+
+    <div class="card">
+      <h2>Personalization</h2>
+      <p class="note">These make the dashboard yours; none of it is shared with anyone.</p>
+      <div class="row">
+        <label class="note">Home state
+          <input id="prefState" maxlength="2" placeholder="e.g. GA" style="width:64px;text-transform:uppercase"></label>
+        <label class="note" title="If your 401(k) feed reports one combined contribution line, these percentages split it into your deferral vs. employer match">
+          401(k): you contribute <input id="prefDefer" type="number" step="0.5" style="width:64px">%
+          , employer matches <input id="prefMatch" type="number" step="0.5" style="width:64px">%</label>
+      </div>
+      <div class="row" style="flex-direction:column;align-items:flex-start">
+        <span class="note">Friendly names for recurring charges (one per line: <code>match text = Label</code>, e.g. <code>acme prop = Rent</code>)</span>
+        <textarea id="prefNames" placeholder="acme prop = Rent&#10;globex payroll = Paycheck"></textarea>
+      </div>
+      <div class="row"><button class="btn" id="btnSavePrefs">Save personalization</button>
+        <span class="note" id="prefsStatus"></span></div>
+    </div>
+
+    <div class="card">
+      <h2>Categorization rules</h2>
+      <p class="note">Rules match a substring of the transaction description (case-insensitive); the
+        lowest-priority match wins. Manual category edits are never overwritten by rules.</p>
+      <div class="rules-add">
+        <input id="rulePattern" placeholder="contains… e.g. 'blue bottle'">
+        <select id="ruleCategory"></select>
+        <input id="rulePriority" type="number" value="100" style="width:80px" title="Priority (lower wins)">
+        <button class="btn" id="btnAddRule">Add rule</button>
+        <button class="btn secondary" id="btnApplyRules">Re-apply rules</button>
+        <button class="btn secondary" id="btnDetectTransfers" title="Pair-match offsetting transactions across accounts (card payments, transfers) so they never count as income or spending">Detect transfers</button>
+      </div>
+      <table>
+        <thead><tr><th>Pattern</th><th>Category</th><th>Priority</th><th></th></tr></thead>
+        <tbody id="rulesBody"></tbody>
+      </table>
+    </div>
+  </section>
+</main>
+
+<div class="tooltip" id="tooltip"></div>
+<div class="toast" id="toast"></div>
+<script src="/static/app.js"></script>
+</body>
+</html>

@@ -1,0 +1,12 @@
+# Your data — never share this. It contains your transactions, balances,
+# and your SimpleFIN access credential.
+data/
+memos/
+
+# Local machine config
+.claude/
+*.log
+__pycache__/
+*.pyc
+.DS_Store
+nohup.out
