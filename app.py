@@ -539,7 +539,7 @@ def api_timeseries():
     # consumption (see the Gambling tab), so its lumpy in/outs would distort
     # the day-to-day picture. It still counts everywhere else.
     FIXED_CATS = {"Housing", "Utilities", "Insurance", "Subscriptions", "Commuter Benefit",
-                  "Gambling & Betting", "AI Spending"}
+                  "Gambling & Betting", "AI Spending", "Betting Tools"}
     spend_by = defaultdict(float)
     for r in rows:
         cat = r["cat_name"]
@@ -1856,7 +1856,8 @@ GAMBLING_PLATFORMS = [
     ("parlayplay", "ParlayPlay"), ("polymarket", "Polymarket"), ("rebet", "Rebet"),
     ("betr", "BETR"), ("draftkings", "DraftKings"), ("from: draft", "DraftKings"),
     ("fanduel", "FanDuel"), ("prizepicks", "PrizePicks"), ("from: prize", "PrizePicks"),
-    ("from: chalk", "Chalk"),
+    ("from: chalk", "Chalk"), ("underdog", "Underdog"), ("hard rock", "Hard Rock Bet"),
+    ("fliff", "Fliff"), ("caesars", "Caesars"), ("bet365", "bet365"), ("stake.", "Stake"),
 ]
 
 
@@ -1997,6 +1998,25 @@ def api_gambling_import():
     return jsonify({"ok": True, "added": added, "settled_updates": updated})
 
 
+@app.get("/api/gambling/platform")
+def api_gambling_platform():
+    """All bank-side transactions for one platform (or 'Other', or 'Tools')."""
+    name = request.args.get("name", "Other")
+    conn = connect()
+    if name == "Tools":
+        rows = conn.execute(TXN_SELECT + """
+            WHERE a.hidden=0 AND c.name='Betting Tools' ORDER BY t.posted DESC""").fetchall()
+    else:
+        rows = [r for r in gambling_cash_txns(conn) if platform_of(r["description"]) == name]
+        rows.sort(key=lambda r: -r["posted"])
+    conn.close()
+    return jsonify({"name": name, "transactions": [{
+        "date": date.fromtimestamp(r["posted"]).isoformat(),
+        "description": r["description"][:70], "amount": r["amount"],
+        "account": r["acct_name"],
+    } for r in rows[:150]]})
+
+
 @app.get("/api/gambling/snapshots")
 def api_gambling_snapshots():
     conn = connect()
@@ -2039,6 +2059,15 @@ def api_gambling_summary():
         else:
             monthly[mk]["withdrawn"] += t["amount"]
             plat[p]["withdrawn"] += t["amount"]
+
+    # Research/tooling subscriptions (OddsJam etc.) — real spending, tracked
+    # separately from bankroll movements
+    tools_row = conn.execute("""
+        SELECT COALESCE(SUM(-t.amount),0) AS total,
+               COALESCE(SUM(CASE WHEN t.posted >= ? THEN -t.amount ELSE 0 END),0) AS last90
+        FROM transactions t JOIN categories c ON c.id=t.category_id
+        WHERE c.name='Betting Tools' AND t.amount < 0
+    """, (int(time.time()) - 90 * 86400,)).fetchone()
 
     ref = bankroll_reference(conn)
     est = bankroll_estimate_now(conn)
@@ -2083,6 +2112,7 @@ def api_gambling_summary():
         "deposited": round(deposited, 2), "withdrawn": round(withdrawn, 2),
         "net_funded": round(deposited - withdrawn, 2),
         "implied_pl": implied,
+        "tools": {"total": round(tools_row["total"], 2), "last90": round(tools_row["last90"], 2)},
         "monthly": [{"month": m, **{k: round(v[k], 2) for k in v}} for m, v in sorted(monthly.items())],
         "platforms": sorted([{"name": k, **{x: round(v[x], 2) for x in v},
                               "net": round(v["deposited"] - v["withdrawn"], 2)}

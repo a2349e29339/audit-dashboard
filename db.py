@@ -127,6 +127,7 @@ DEFAULT_CATEGORIES = [
     ("Gas & Fuel", "expense"), ("Gambling & Betting", "transfer"),
     ("Personal Care", "expense"), ("Cash & ATM", "expense"),
     ("Commuter Benefit", "expense"), ("AI Spending", "expense"), ("Venmo", "expense"),
+    ("Betting Tools", "expense"),
     ("Credit Card Payment", "transfer"), ("Account Transfer", "transfer"),
     ("Investment Contribution", "transfer"),
 ]
@@ -240,7 +241,8 @@ DEFAULT_RULES += [
     ("claude.ai", "AI Spending", 65), ("chatgpt", "AI Spending", 65),
     ("perplexity", "AI Spending", 65), ("midjourney", "AI Spending", 65),
     ("elevenlabs", "AI Spending", 65), ("github copilot", "AI Spending", 65),
-    ("oddsjam", "Gambling & Betting", 55), ("propprofessor", "Gambling & Betting", 55),
+    ("oddsjam", "Betting Tools", 55), ("propprofessor", "Betting Tools", 55),
+    ("draftlogics", "Betting Tools", 55),
     ("hinge", "Subscriptions", 65),
     ("bird app", "Transport", 65), ("marta", "Transport", 65), ("scooter", "Transport", 150),
     ("resort", "Travel", 150), ("state park", "Travel", 110),

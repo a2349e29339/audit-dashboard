@@ -839,6 +839,10 @@ async function loadGambling() {
     { label: "Implied P/L", value: d.implied_pl === null ? "—" : (d.implied_pl >= 0 ? "+" : "") + fmtUSD(d.implied_pl),
       hint: "bankroll + withdrawals − deposits", pos: d.implied_pl > 0 },
   ];
+  if (d.tools && d.tools.total > 0.5) {
+    tiles.push({ label: "Tools & research", value: fmtUSD(d.tools.last90 / 3) + "/mo",
+      hint: `OddsJam etc. — ${fmtUSD(d.tools.total)} lifetime (counts as spending, not bankroll)` });
+  }
   if (d.bets) {
     tiles.push({ label: "Bet P/L (Pikkit)", value: (d.bets.profit >= 0 ? "+" : "") + fmtUSD(d.bets.profit),
       hint: `${d.bets.count} settled · ROI ${d.bets.roi_pct}% · win ${d.bets.win_rate}%`, pos: d.bets.profit > 0 });
@@ -848,11 +852,27 @@ async function loadGambling() {
 
   renderFunding($("#gamblingFundingChart"), d.monthly);
   $("#platformBody").innerHTML = d.platforms.map(p => `
-    <tr><td class="desc-main">${escapeHtml(p.name)}</td>
+    <tr class="plat-row" data-plat="${escapeHtml(p.name)}" style="cursor:pointer" title="Click for this app's transactions">
+        <td class="desc-main">${escapeHtml(p.name)}</td>
         <td class="num">${fmtUSDc(p.deposited)}</td>
         <td class="num">${fmtUSDc(p.withdrawn)}</td>
         <td class="num">${fmtUSDc(p.net)}</td></tr>`).join("")
     || '<tr><td colspan="4" class="empty">No platform flows found.</td></tr>';
+  $$("#platformBody .plat-row").forEach(tr => tr.addEventListener("click", async () => {
+    const pd = await api("/api/gambling/platform?name=" + encodeURIComponent(tr.dataset.plat));
+    $("#platformDetail").hidden = false;
+    $("#platformDetail").innerHTML =
+      `<p class="note"><b>${escapeHtml(pd.name)}</b> — ${pd.transactions.length} transactions. ` +
+      `Negative = money to the app, positive = money back. ` +
+      `Anything misfiled? Fix its category on the Transactions tab (set it to “Gambling & Betting”) and it moves here.</p>` +
+      `<table><tbody>${pd.transactions.map(t => `
+        <tr><td style="white-space:nowrap">${t.date}</td>
+            <td><div class="desc-main">${escapeHtml(t.description)}</div>
+                <div class="desc-sub">${escapeHtml(t.account || "")}</div></td>
+            <td class="num ${t.amount > 0 ? "amount-pos" : ""}">${t.amount > 0 ? "+" : ""}${fmtUSDc(t.amount)}</td></tr>`).join("")}
+      </tbody></table>`;
+    $("#platformDetail").scrollIntoView({ behavior: "smooth", block: "nearest" });
+  }));
 
   const snaps = await api("/api/gambling/snapshots");
   $("#snapList").innerHTML = snaps.length
