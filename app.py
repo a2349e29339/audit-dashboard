@@ -1761,11 +1761,11 @@ def api_flow_detail():
         breakdown = sorted([{"name": k, "amount": round(v / n, 2)} for k, v in agg.items()],
                            key=lambda x: -x["amount"])
         explanation = "Per-month averages by category. Click a category leaf on the chart for its transactions."
-    elif node.startswith("Deficit"):
-        explanation = ("Not a transaction — arithmetic. Total outflows (spending + investing + bankroll "
-                       "funding) exceeded total income in this window; the difference was drawn from "
-                       "account balances you already had. It shows on the income side only so the "
-                       "diagram balances.")
+    elif node.startswith(("Deficit", "Overspend")):
+        explanation = ("Not a transaction — arithmetic. You spent/invested more than came in during "
+                       "this window; the gap shows as the hatched notch. In practice it means account "
+                       "balances ended lower (or card balances higher) than they started — there's no "
+                       "single 'source' it came from.")
     elif node.startswith("Leftover"):
         explanation = ("Not a transaction — arithmetic. Income exceeded spending + investing in this "
                        "window; the surplus simply stayed in checking/savings.")

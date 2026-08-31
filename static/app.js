@@ -666,7 +666,7 @@ function renderFlowSankey(container, sources, groups, totalIncome, deficit = 0) 
     defs.appendChild(pat);
     svg.appendChild(defs);
     const inH = yIn - pad.t;
-    const defNode = { name: "Deficit (from balances)", v: deficit, kind: "source" };
+    const defNode = { name: "Overspend", v: deficit, kind: "source" };
     const base = svgEl("rect", { x: xTot, y: pad.t + inH, width: barW,
       height: Math.max(totH - inH, 3), rx: 3, fill: "var(--neg)", "fill-opacity": "0.25",
       stroke: "var(--neg)", "stroke-width": 1 });
@@ -677,7 +677,7 @@ function renderFlowSankey(container, sources, groups, totalIncome, deficit = 0) 
     const t = svgEl("text", { x: xTot + barW + 8, y: pad.t + inH + Math.max(totH - inH, 3) / 2 + 4,
       "text-anchor": "start", fill: "var(--neg)", "font-size": 11.5, "font-weight": 650,
       "paint-order": "stroke", stroke: "var(--surface)", "stroke-width": 4, "stroke-linejoin": "round" });
-    t.textContent = `− ${fmtUSD(deficit)} from savings`;
+    t.textContent = `over by ${fmtUSD(deficit)}`;
     hover(t, defNode, "1");
     svg.appendChild(t);
   }
@@ -738,8 +738,8 @@ function renderFlowSankey(container, sources, groups, totalIncome, deficit = 0) 
   foot.className = "note";
   foot.style.cssText = "margin:10px 2px 0;font-size:13px";
   foot.innerHTML = deficit > 0.5
-    ? `Money in <b>${fmtUSD(totalIncome)}</b>/mo − money out <b>${fmtUSD(totalOut)}</b>/mo = ` +
-      `<b style="color:var(--neg)">−${fmtUSD(deficit)}/mo covered from savings</b> (the hatched notch).`
+    ? `Money in <b>${fmtUSD(totalIncome)}</b>/mo − money out <b>${fmtUSD(totalOut)}</b>/mo: ` +
+      `<b style="color:var(--neg)">you went over by ${fmtUSD(deficit)}/mo</b> (the hatched notch).`
     : `Money in <b>${fmtUSD(totalIncome)}</b>/mo — fully allocated: spent ${fmtUSD(spent)}, ` +
       `saved & invested ${fmtUSD(savedG ? savedG.v : 0)}` +
       (leftover > 0.5 ? ` <b style="color:var(--good-text)">(incl. ${fmtUSD(leftover)} simply left in cash)</b>` : "") + ".";
