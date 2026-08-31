@@ -9,15 +9,18 @@ sent anywhere.
 
 ## Quick start
 
-Requires Python 3.10+ with `flask` and `requests`:
+The only requirement is **Python 3.10+** (macOS has it; Windows: install from
+python.org and tick "Add python.exe to PATH"). Dependencies install themselves
+on first run.
 
-```bash
-python3 -m pip install flask requests
-./run.sh
-```
+- **macOS** — double-click **`Start Dashboard.command`**
+  (first time: right-click → Open, because it's unsigned).
+- **Windows** — double-click **`run.bat`**.
+- **Linux / terminal** — `./run.sh`
 
-Open http://localhost:5177 — then in **Settings → Seed demo data** to explore with
-sample data, or connect your real accounts:
+Your browser opens to the dashboard automatically. On first launch you'll get a
+welcome screen with two paths: **explore with demo data** (fake, one click to
+remove) or **connect your accounts**:
 
 ## Connect your accounts (SimpleFIN)
 
@@ -33,7 +36,10 @@ sample data, or connect your real accounts:
 4. On the **Accounts** tab, confirm each account's type (checking / savings /
    credit / retirement / investment) — the type controls whether an account feeds
    cash-flow math or is tracked as net-worth only.
-5. Optional: `./install_autosync.sh` (macOS) syncs automatically every 4 hours.
+5. Staying fresh: the dashboard auto-syncs whenever you open it with data older
+   than 6 hours. Optional: `./install_autosync.sh` (macOS) also syncs in the
+   background every 4 hours; Windows users can schedule `python sync.py` with
+   Task Scheduler for the same effect.
 
 ## Make it yours
 

@@ -220,6 +220,10 @@ button.btn:disabled { opacity: 0.5; cursor: default; }
 .note.err { color: var(--critical); }
 .rules-add { display: flex; gap: 8px; flex-wrap: wrap; margin-bottom: 12px; }
 
+/* ---------- first run ---------- */
+#view-overview.first-run > :not(#onboarding) { display: none; }
+#onboarding h2 { font-size: 17px; }
+
 /* ---------- flow drill-down ---------- */
 .flow-detail { border-top: 1px solid var(--grid); margin-top: 14px; padding-top: 12px; }
 .fd-head { display: flex; gap: 12px; align-items: baseline; }

@@ -28,6 +28,20 @@
 <main>
   <!-- ============ OVERVIEW ============ -->
   <section class="view active" id="view-overview">
+    <div id="onboarding" class="card" hidden>
+      <h2>Welcome 👋</h2>
+      <p class="note" style="max-width:560px">This dashboard shows where your money comes from and
+        goes — synced from your accounts, categorized automatically, all stored only on this
+        computer. Two ways to start:</p>
+      <div class="row" style="display:flex;gap:10px;flex-wrap:wrap;margin-top:12px">
+        <button class="btn" id="btnObDemo">Explore with demo data</button>
+        <button class="btn secondary" id="btnObConnect">Connect my accounts</button>
+      </div>
+      <p class="note" style="margin-top:12px">Demo data is fake and removable in one click.
+        Connecting uses <b>SimpleFIN Bridge</b> (~$1.50/mo) — your bank credentials never touch
+        this app. Either way, visit <b>Settings → Personalization</b> afterward to make it yours.</p>
+    </div>
+
     <div class="tiles" id="rnTiles"></div>
     <div class="note" id="upcomingStrip" style="margin:-4px 2px 16px"></div>
 

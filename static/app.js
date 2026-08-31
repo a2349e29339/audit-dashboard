@@ -421,6 +421,11 @@ async function loadOverview() {
   }
 
   renderCategoryBars($("#categoryChart"), o.by_category);
+
+  // First run: show only the welcome card until there's at least one account
+  const firstRun = o.account_count === 0;
+  $("#view-overview").classList.toggle("first-run", firstRun);
+  $("#onboarding").hidden = !firstRun;
 }
 
 function catOptions(selected) {
@@ -1141,6 +1146,13 @@ $("#btnSavePrefs").addEventListener("click", async () => {
   setTimeout(() => $("#prefsStatus").textContent = "", 2500);
   refreshAll();
 });
+
+$("#btnObDemo").addEventListener("click", async () => {
+  const r = await post("/api/demo/seed");
+  toast(`Loaded ${r.transactions} demo transactions — explore away`);
+  refreshAll();
+});
+$("#btnObConnect").addEventListener("click", () => switchView("settings"));
 
 $("#fdClose").addEventListener("click", () => { $("#flowDetail").hidden = true; });
 $("#flowMonthSeg").addEventListener("click", e => {

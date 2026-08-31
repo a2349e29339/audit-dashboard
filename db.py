@@ -2,7 +2,8 @@
 import os
 import sqlite3
 
-DB_PATH = os.path.join(os.path.dirname(os.path.abspath(__file__)), "data", "audit.db")
+DB_PATH = os.environ.get("AUDIT_DB") or os.path.join(
+    os.path.dirname(os.path.abspath(__file__)), "data", "audit.db")
 
 SCHEMA = """
 CREATE TABLE IF NOT EXISTS settings (

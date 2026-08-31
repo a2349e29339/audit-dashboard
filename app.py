@@ -448,6 +448,7 @@ def api_overview():
             key=lambda x: -x["amount"]),
         "net_worth_history": [{"date": r["date"], "total": round(r["total"], 2)} for r in nw_hist],
         "uncategorized": uncategorized,
+        "account_count": len(accounts),
         "last_sync": last_sync,
         "has_simplefin": has_simplefin,
         "has_demo": has_demo,
