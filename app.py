@@ -346,17 +346,28 @@ def api_overview():
     if bankroll is not None:
         net_worth += bankroll
 
-    # Cash flow from spending accounts, transfers excluded
+    # Cash flow from spending accounts, transfers excluded. Rent paid in the last
+    # days of a month counts toward the month it pays for (see effective date).
     rows = conn.execute(TXN_SELECT + """
         WHERE t.posted BETWEEN ? AND ? AND a.hidden=0 AND a.type IN ('checking','savings','credit','unknown')
         AND (c.kind IS NULL OR c.kind != 'transfer')
-    """, (start, end)).fetchall()
+    """, (start - 5 * 86400, end)).fetchall()
+
+    def _eff_ts(r):
+        if r["cat_name"] == "Housing" and r["amount"] < 0:
+            d = date.fromtimestamp(r["posted"])
+            if d.day >= 28:
+                nxt = (d.replace(day=28) + timedelta(days=8)).replace(day=1)
+                return int(datetime(nxt.year, nxt.month, 1, 12).timestamp())
+        return r["posted"]
+
+    rows = [r for r in rows if start <= _eff_ts(r) <= end]
 
     monthly = {}
     cat_spend = {}
     income_total = spend_total = 0.0
     for r in rows:
-        mk = datetime.fromtimestamp(r["posted"]).strftime("%Y-%m")
+        mk = datetime.fromtimestamp(_eff_ts(r)).strftime("%Y-%m")
         m = monthly.setdefault(mk, {"income": 0.0, "spending": 0.0})
         name = r["cat_name"] or "Uncategorized"
         if r["amount"] > 0:
@@ -1594,11 +1605,25 @@ def api_flow():
     sel = request.args.get("month")
     months, available, span_start, span_end, n = _flow_span(first_d, n_months, sel)
 
+    # Fetch with a few days' buffer, then filter on EFFECTIVE date: rent paid in
+    # the last days of a month is next month's rent (two rents can post in one
+    # calendar month), so Housing payments on day >= 28 count toward the month
+    # they pay for.
     rows = conn.execute(TXN_SELECT + """
         WHERE t.posted BETWEEN ? AND ? AND a.hidden=0
           AND a.type IN ('checking','savings','credit','unknown')
           AND (c.kind IS NULL OR c.kind != 'transfer')
-    """, (span_start, span_end)).fetchall()
+    """, (span_start - 5 * 86400, span_end)).fetchall()
+
+    def effective_ts(r):
+        if r["cat_name"] == "Housing" and r["amount"] < 0:
+            d = date.fromtimestamp(r["posted"])
+            if d.day >= 28:
+                nxt = (d.replace(day=28) + timedelta(days=8)).replace(day=1)
+                return int(datetime(nxt.year, nxt.month, 1, 12).timestamp())
+        return r["posted"]
+
+    rows = [r for r in rows if span_start <= effective_ts(r) <= span_end]
 
     sources = conn.execute("SELECT * FROM income_sources WHERE active=1").fetchall()
     incomes = defaultdict(float)

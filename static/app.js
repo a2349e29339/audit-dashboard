@@ -485,6 +485,7 @@ async function loadFlow() {
         fmtMonth(d.months[0]) + " – " + fmtMonth(d.months[d.months.length - 1])}` +
       ` (${d.months.length} full month${d.months.length > 1 ? "s" : ""}). `) +
     "Color = kind of money: blue essentials, orange lifestyle, teal saved. " +
+    "Click any bar, ribbon, or label for the transactions behind it. " +
     "Transfers and card payoffs excluded; refunds net against their category.";
 
   // ----- sources column -----
@@ -658,15 +659,26 @@ function renderFlowSankey(container, sources, groups, totalIncome, deficit = 0) 
   // Overspend: outflows exceed income, so the bottom of the hub is fed by
   // nothing — mark that unfunded stretch in red instead of inventing a source
   if (deficit > 0.5) {
+    // Hatched (not solid) so it reads as a gap being covered, not a kind of income
+    const defs = svgEl("defs", {});
+    const pat = svgEl("pattern", { id: "hatch", patternUnits: "userSpaceOnUse", width: 5, height: 5 });
+    pat.appendChild(svgEl("path", { d: "M0,5 L5,0", stroke: "var(--neg)", "stroke-width": 1.4 }));
+    defs.appendChild(pat);
+    svg.appendChild(defs);
     const inH = yIn - pad.t;
-    const defBar = svgEl("rect", { x: xTot, y: pad.t + inH, width: barW,
-      height: Math.max(totH - inH, 3), rx: 3, fill: "var(--neg)" });
-    hover(defBar, { name: "Deficit (from balances)", v: deficit, kind: "source" }, "1");
-    svg.appendChild(defBar);
+    const defNode = { name: "Deficit (from balances)", v: deficit, kind: "source" };
+    const base = svgEl("rect", { x: xTot, y: pad.t + inH, width: barW,
+      height: Math.max(totH - inH, 3), rx: 3, fill: "var(--neg)", "fill-opacity": "0.25",
+      stroke: "var(--neg)", "stroke-width": 1 });
+    const hatchR = svgEl("rect", { x: xTot, y: pad.t + inH, width: barW,
+      height: Math.max(totH - inH, 3), rx: 3, fill: "url(#hatch)" });
+    hover(base, defNode, "0.25"); hover(hatchR, defNode, "1");
+    svg.appendChild(base); svg.appendChild(hatchR);
     const t = svgEl("text", { x: xTot + barW + 8, y: pad.t + inH + Math.max(totH - inH, 3) / 2 + 4,
       "text-anchor": "start", fill: "var(--neg)", "font-size": 11.5, "font-weight": 650,
       "paint-order": "stroke", stroke: "var(--surface)", "stroke-width": 4, "stroke-linejoin": "round" });
-    t.textContent = `overspend ${fmtUSD(deficit)} — from balances`;
+    t.textContent = `− ${fmtUSD(deficit)} from savings`;
+    hover(t, defNode, "1");
     svg.appendChild(t);
   }
   for (const g of groups) {
@@ -679,7 +691,7 @@ function renderFlowSankey(container, sources, groups, totalIncome, deficit = 0) 
   }
 
   // hub labels ABOVE their bars (name, then bold value) — the reference style
-  const hubLabel = (x, yTop, name, value, anchor = "middle") => {
+  const hubLabel = (x, yTop, name, value, node, anchor = "middle") => {
     const t1 = svgEl("text", { x, y: yTop - 22, "text-anchor": anchor, fill: "var(--ink-2)",
       "font-size": 11.5, "font-weight": 600,
       "paint-order": "stroke", stroke: "var(--surface)", "stroke-width": 4, "stroke-linejoin": "round" });
@@ -688,12 +700,14 @@ function renderFlowSankey(container, sources, groups, totalIncome, deficit = 0) 
       "font-size": 12.5, "font-weight": 700, class: "tick-num",
       "paint-order": "stroke", stroke: "var(--surface)", "stroke-width": 4, "stroke-linejoin": "round" });
     t2.textContent = value;
+    if (node) { hover(t1, node, "1"); hover(t2, node, "1"); }
     svg.appendChild(t1); svg.appendChild(t2);
   };
-  hubLabel(xTot + barW / 2, pad.t, "Total income", fmtUSD(totalIncome) + "/mo");
+  hubLabel(xTot + barW / 2, pad.t, "Total income", fmtUSD(totalIncome) + "/mo",
+           { name: "Total income", v: totalIncome, kind: "total" });
   for (const g of groups)
     hubLabel(xGrp + barW / 2, g.y,
-      `${g.name} (${Math.round(100 * g.v / totalIncome)}%)`, fmtUSD(g.v));
+      `${g.name} (${Math.round(100 * g.v / totalIncome)}%)`, fmtUSD(g.v), g);
 
   // outer labels: two lines (name / value), with collision avoidance
   const maxChars = Math.max(9, Math.floor((labelW - 14) / 6.3));
@@ -708,12 +722,28 @@ function renderFlowSankey(container, sources, groups, totalIncome, deficit = 0) 
       const t2 = svgEl("text", { x: anchorX, y: cy + 12, "text-anchor": anchor,
         fill: "var(--ink)", "font-size": 12.5, "font-weight": 700, class: "tick-num" });
       t2.textContent = fmtUSD(n.v);
+      hover(t1, n, "1"); hover(t2, n, "1");
       svg.appendChild(t1); svg.appendChild(t2);
     }
   }
   labels(sources, xSrc - 8, "end");
   labels(cats, xCat + barW + 8, "start");
   container.appendChild(svg);
+
+  // Plain-math reconciliation footer — the sentence version of the diagram
+  const spent = groups.filter(g => g.name !== "Saved & invested").reduce((a, g) => a + g.v, 0);
+  const savedG = groups.find(g => g.name === "Saved & invested");
+  const leftover = savedG ? (savedG.cats.find(c => c.name === "Leftover cash") || { v: 0 }).v : 0;
+  const foot = document.createElement("p");
+  foot.className = "note";
+  foot.style.cssText = "margin:10px 2px 0;font-size:13px";
+  foot.innerHTML = deficit > 0.5
+    ? `Money in <b>${fmtUSD(totalIncome)}</b>/mo − money out <b>${fmtUSD(totalOut)}</b>/mo = ` +
+      `<b style="color:var(--neg)">−${fmtUSD(deficit)}/mo covered from savings</b> (the hatched notch).`
+    : `Money in <b>${fmtUSD(totalIncome)}</b>/mo — fully allocated: spent ${fmtUSD(spent)}, ` +
+      `saved & invested ${fmtUSD(savedG ? savedG.v : 0)}` +
+      (leftover > 0.5 ? ` <b style="color:var(--good-text)">(incl. ${fmtUSD(leftover)} simply left in cash)</b>` : "") + ".";
+  container.appendChild(foot);
 }
 
 
