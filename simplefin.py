@@ -48,6 +48,10 @@ def fetch_accounts(access_url: str, start_date: int | None = None,
     if pending:
         params["pending"] = 1
     resp = requests.get(access_url.rstrip("/") + "/accounts", params=params, timeout=120)
+    if resp.status_code == 402:
+        raise SimpleFINError("SimpleFIN Bridge needs payment — your Bridge subscription has lapsed. "
+                             "Renew at https://beta-bridge.simplefin.org (Billing). Nothing is lost; "
+                             "syncing resumes automatically once it's active.")
     if resp.status_code == 403:
         raise SimpleFINError("Access denied (403). The access URL may have been revoked — "
                              "reconnect with a new setup token.")

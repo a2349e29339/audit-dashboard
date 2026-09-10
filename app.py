@@ -165,6 +165,21 @@ def api_txn_update(txn_id):
     return jsonify({"ok": True})
 
 
+@app.post("/api/transactions/bulk")
+def api_txn_bulk():
+    b = request.get_json(force=True)
+    ids = [i for i in (b.get("ids") or []) if isinstance(i, str)]
+    cid = b.get("category_id")
+    if not ids:
+        return jsonify({"error": "no transactions selected"}), 400
+    conn = connect()
+    conn.executemany("UPDATE transactions SET category_id=?, category_source='manual' WHERE id=?",
+                     [(cid, i) for i in ids])
+    conn.commit()
+    conn.close()
+    return jsonify({"ok": True, "updated": len(ids)})
+
+
 # ---------- categories & rules ----------
 
 @app.get("/api/categories")
@@ -225,6 +240,47 @@ def api_rule_delete(rule_id):
     conn.commit()
     conn.close()
     return jsonify({"ok": True})
+
+
+def merchant_key(desc):
+    """Short pattern suggestion for a description: strip wallet/POS prefixes and
+    digits, keep the first two words."""
+    d = (desc or "").lower()
+    for pre in ("aplpay ", "apple pay ", "tst* ", "tst*", "spo*", "sq *", "paypal *", "pp*", "orig co name:"):
+        if d.startswith(pre):
+            d = d[len(pre):]
+    d = re.sub(r"[#*]?\d[\d\-/:]*", " ", d)
+    d = re.sub(r"\s+", " ", d).strip()
+    toks = [t for t in d.split(" ") if len(t) > 1][:2]
+    return " ".join(toks)
+
+
+@app.get("/api/rules/suggestions")
+def api_rule_suggestions():
+    """Merchants that keep landing in Miscellaneous or uncategorized — the
+    highest-value rules you haven't written yet."""
+    conn = connect()
+    rows = conn.execute(TXN_SELECT + """
+        WHERE a.hidden=0 AND a.type IN ('checking','savings','credit','unknown')
+          AND (t.category_id IS NULL OR c.name = 'Miscellaneous')
+    """).fetchall()
+    conn.close()
+    agg = {}
+    for r in rows:
+        k = merchant_key(r["description"])
+        if not k:
+            continue
+        g = agg.setdefault(k, {"pattern": k, "example": r["description"][:60], "count": 0,
+                               "total": 0.0, "last": 0})
+        g["count"] += 1
+        g["total"] += -r["amount"]
+        g["last"] = max(g["last"], r["posted"])
+    out = [g for g in agg.values() if g["count"] >= 2 or abs(g["total"]) >= 100]
+    out.sort(key=lambda g: -abs(g["total"]))
+    for g in out:
+        g["total"] = round(g["total"], 2)
+        g["last"] = date.fromtimestamp(g["last"]).isoformat()
+    return jsonify(out[:20])
 
 
 @app.post("/api/rules/apply")
@@ -425,6 +481,27 @@ def api_overview():
     """, (start, end)).fetchone()["n"]
 
     last_sync = conn.execute("SELECT MAX(ts) AS t FROM sync_log WHERE ok=1").fetchone()["t"]
+    latest_log = conn.execute("SELECT ts, ok, message FROM sync_log ORDER BY id DESC LIMIT 1").fetchone()
+    last_sync_error = (latest_log["message"] if latest_log and not latest_log["ok"] else None)
+
+    # 30-day net-worth attribution: investment growth split into contributions vs market
+    nw_attrib = None
+    since_iso = (date.today() - timedelta(days=30)).isoformat()
+    snaps = conn.execute("""SELECT bh.date, SUM(bh.balance) AS total FROM balance_history bh
+        JOIN accounts a ON a.id=bh.account_id
+        WHERE a.hidden=0 AND a.type IN ('retirement','investment') GROUP BY bh.date ORDER BY bh.date""").fetchall()
+    if len(snaps) >= 2:
+        first = next((s for s in snaps if s["date"] >= since_iso), snaps[0])
+        last = snaps[-1]
+        if first["date"] < last["date"]:
+            t0 = int(datetime.strptime(first["date"], "%Y-%m-%d").timestamp())
+            t1 = int(datetime.strptime(last["date"], "%Y-%m-%d").timestamp()) + 86399
+            dest_w, _p, _c, _pb = investment_flows(conn, t0, t1)
+            contrib = sum(dest_w.values())
+            invest_delta = last["total"] - first["total"]
+            nw_attrib = {"since": first["date"], "days": (date.fromisoformat(last["date"]) - date.fromisoformat(first["date"])).days,
+                         "contributions": round(contrib, 2), "market": round(invest_delta - contrib, 2),
+                         "invest_delta": round(invest_delta, 2)}
     has_simplefin = get_setting(conn, "simplefin_access_url") is not None
     has_demo = conn.execute("SELECT COUNT(*) FROM accounts WHERE is_demo=1").fetchone()[0] > 0
     conn.close()
@@ -450,6 +527,8 @@ def api_overview():
         "uncategorized": uncategorized,
         "account_count": len(accounts),
         "last_sync": last_sync,
+        "last_sync_error": last_sync_error,
+        "nw_attrib": nw_attrib,
         "has_simplefin": has_simplefin,
         "has_demo": has_demo,
     })
@@ -918,6 +997,51 @@ def api_trips():
                     "baseline_weekly": base_weekly})
 
 
+# ---------- office-day economics ----------
+
+@app.get("/api/officedays")
+def api_officedays():
+    """Cost of an office day vs a WFH day, using a user-chosen merchant as the
+    'I was in the office' marker (Settings -> Personalization)."""
+    conn = connect()
+    marker = (get_setting(conn, "office_pattern") or "").lower().strip()
+    if not marker:
+        conn.close()
+        return jsonify({"enabled": False})
+    since = int(time.time()) - 91 * 86400
+    rows = conn.execute(TXN_SELECT + """
+        WHERE t.posted >= ? AND a.hidden=0 AND a.type IN ('checking','savings','credit','unknown')
+          AND (c.kind IS NULL OR c.kind = 'expense') AND t.amount < 0
+    """, (since,)).fetchall()
+    conn.close()
+    FIXED = {"Housing", "Utilities", "Insurance", "Subscriptions", "Commuter Benefit",
+             "AI Spending", "Betting Tools", "Taxes"}
+    CLUSTER = {"Dining & Coffee", "Transport", "Groceries", "Personal Care"}
+    office_days, spend_day, cluster_day = set(), defaultdict(float), defaultdict(float)
+    for r in rows:
+        d = date.fromtimestamp(r["posted"])
+        if marker in (r["description"] or "").lower():
+            office_days.add(d)
+        if r["cat_name"] in FIXED:
+            continue
+        spend_day[d] += -r["amount"]
+        if r["cat_name"] in CLUSTER:
+            cluster_day[d] += -r["amount"]
+    start = date.fromtimestamp(since)
+    weekdays = [start + timedelta(days=i) for i in range((date.today() - start).days)
+                if (start + timedelta(days=i)).weekday() < 5]
+    office = [d for d in weekdays if d in office_days]
+    wfh = [d for d in weekdays if d not in office_days]
+    avg = lambda days, m: round(sum(m.get(d, 0) for d in days) / len(days), 2) if days else 0
+    weeks = max(len(weekdays) / 5, 1)
+    return jsonify({
+        "enabled": True, "marker": marker, "weeks": round(weeks, 1),
+        "office_days": len(office), "office_per_week": round(len(office) / weeks, 1),
+        "office_spend": avg(office, spend_day), "wfh_spend": avg(wfh, spend_day),
+        "office_cluster": avg(office, cluster_day), "wfh_cluster": avg(wfh, cluster_day),
+    })
+
+
 # ---------- review queue (flags) ----------
 
 def normalize_desc(desc: str) -> str:
@@ -1033,6 +1157,7 @@ def api_prefs_get():
         "k401_defer_pct": get_setting(conn, "k401_defer_pct") or "",
         "k401_match_pct": get_setting(conn, "k401_match_pct") or "",
         "display_names": _json.loads(get_setting(conn, "display_names") or "[]"),
+        "office_pattern": get_setting(conn, "office_pattern") or "",
     }
     conn.close()
     return jsonify(out)
@@ -1059,6 +1184,8 @@ def api_prefs_set():
                 conn.execute("DELETE FROM settings WHERE key='k401_match_share'")
         except (TypeError, ValueError):
             pass
+    if "office_pattern" in b:
+        set_setting(conn, "office_pattern", (b["office_pattern"] or "").strip().lower())
     if "display_names" in b and isinstance(b["display_names"], list):
         clean = [[str(p).strip(), str(n).strip()] for p, n in b["display_names"]
                  if isinstance(p, str) and str(p).strip() and str(n).strip()]

@@ -98,6 +98,12 @@
       <p class="desc" id="tripsDesc"></p>
       <div id="tripsList"></div>
     </div>
+
+    <div class="card" id="officeCard" hidden>
+      <h2>Office days vs. home days</h2>
+      <p class="desc" id="officeDesc"></p>
+      <div class="tiles" id="officeTiles" style="margin-bottom:0"></div>
+    </div>
   </section>
 
   <!-- ============ TRANSACTIONS ============ -->
@@ -118,8 +124,15 @@
       </label>
     </div>
     <div class="card">
+      <div id="bulkBar" class="bulk-bar" hidden>
+        <span id="bulkCount"></span>
+        <select id="bulkCategory"></select>
+        <button class="btn btn-sm" id="btnBulkApply">Set category</button>
+        <button class="btn secondary btn-sm" id="btnBulkClear">Clear</button>
+      </div>
       <table>
         <thead><tr>
+          <th style="width:28px"><input type="checkbox" id="txnSelAll" title="Select all shown"></th>
           <th>Date</th><th>Account</th><th>Description</th><th>Category</th><th class="num">Amount</th>
         </tr></thead>
         <tbody id="txnBody"></tbody>
@@ -315,6 +328,8 @@
       <div class="row">
         <label class="note">Home state
           <input id="prefState" maxlength="2" placeholder="e.g. GA" style="width:64px;text-transform:uppercase"></label>
+        <label class="note" title="A merchant you only visit on office days (e.g. the coffee by your office) — turns your receipts into an attendance log">Office-day marker
+          <input id="prefOffice" placeholder="e.g. dunkin" style="width:120px"></label>
         <label class="note" title="If your 401(k) feed reports one combined contribution line, these percentages split it into your deferral vs. employer match">
           401(k): you contribute <input id="prefDefer" type="number" step="0.5" style="width:64px">%
           , employer matches <input id="prefMatch" type="number" step="0.5" style="width:64px">%</label>
@@ -331,6 +346,7 @@
       <h2>Categorization rules</h2>
       <p class="note">Rules match a substring of the transaction description (case-insensitive); the
         lowest-priority match wins. Manual category edits are never overwritten by rules.</p>
+      <div id="ruleSuggest"></div>
       <div class="rules-add">
         <input id="rulePattern" placeholder="contains… e.g. 'blue bottle'">
         <select id="ruleCategory"></select>

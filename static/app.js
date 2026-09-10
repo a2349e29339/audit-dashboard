@@ -338,7 +338,12 @@ async function loadRightNow() {
   const billsOut = week.filter(e => e.amount < 0);
   const tiles = [
     { label: "Net worth", value: fmtUSD(o.net_worth),
-      hint: nwDelta === null ? "—" : `${nwDelta >= 0 ? "+" : ""}${fmtUSD(nwDelta)} over 30 days`,
+      hint: nwDelta === null ? "—"
+        : o.nw_attrib
+          ? `${nwDelta >= 0 ? "+" : ""}${fmtUSD(nwDelta)} in 30d: saved ${fmtUSD(o.nw_attrib.contributions)} · ` +
+            `market ${o.nw_attrib.market >= 0 ? "+" : ""}${fmtUSD(o.nw_attrib.market)} · ` +
+            `cash ${(nwDelta - o.nw_attrib.invest_delta) >= 0 ? "+" : ""}${fmtUSD(nwDelta - o.nw_attrib.invest_delta)}`
+          : `${nwDelta >= 0 ? "+" : ""}${fmtUSD(nwDelta)} over 30 days`,
       pos: nwDelta > 0 },
     { label: "Checking", value: fmtUSD(f.start_balance ?? o.cash),
       hint: low ? `bottoms at ${fmtUSD(low.balance)} on ${low.date.slice(5)} after scheduled bills${danger ? " ⚠" : ""}` : "no forecast" },
@@ -409,6 +414,8 @@ async function loadOverview() {
   $("#syncStatus").textContent = o.has_simplefin
     ? (o.last_sync ? `SimpleFIN connected · last sync ${new Date(o.last_sync * 1000).toLocaleString()}` : "SimpleFIN connected · never synced")
     : (o.has_demo ? "Demo data · SimpleFIN not connected" : "Local only · no data yet");
+  if (o.last_sync_error)
+    $("#syncStatus").innerHTML += ` · <span style="color:var(--critical)" title="${escapeHtml(o.last_sync_error)}">⚠ last sync failed — ${escapeHtml(o.last_sync_error.split(" — ")[0].slice(0, 70))}</span>`;
 
   // Auto-sync on open if data is stale (launchd also syncs every 4h in the background)
   if (o.has_simplefin && !window._autoSynced
@@ -447,15 +454,24 @@ async function loadTransactions() {
   if ($("#txnInvestment").checked) params.set("investment", "1");
   const txns = await api("/api/transactions?" + params);
   $("#txnEmpty").hidden = txns.length > 0;
+  state.selected = new Set();
+  updateBulkBar();
   $("#txnBody").innerHTML = txns.map(t => `
-    <tr>
+    <tr data-id="${t.id}">
+      <td><input type="checkbox" class="txn-sel" data-id="${t.id}"></td>
       <td class="num" style="text-align:left">${t.date}</td>
       <td><span class="desc-sub">${t.account || ""}</span></td>
       <td><div class="desc-main">${escapeHtml(t.description || t.payee || "—")}</div>
           ${t.pending ? '<span class="pending-tag">pending</span>' : ""}</td>
-      <td><select class="cat-pick${t.category_id == null ? " uncat" : ""}" data-id="${t.id}">${catOptions(t.category_id)}</select></td>
+      <td><select class="cat-pick${t.category_id == null ? " uncat" : ""}" data-id="${t.id}">${catOptions(t.category_id)}</select>
+          <button class="btn secondary btn-sm rule-btn" data-id="${t.id}" data-desc="${escapeHtml(t.description || t.payee || "")}" data-cat="${t.category_id ?? ""}" title="Always categorize this merchant">+ rule</button></td>
       <td class="num ${t.amount > 0 ? "amount-pos" : ""}">${t.amount > 0 ? "+" : ""}${fmtUSDc(t.amount)}</td>
     </tr>`).join("");
+  $$("#txnBody .txn-sel").forEach(cb => cb.addEventListener("change", () => {
+    cb.checked ? state.selected.add(cb.dataset.id) : state.selected.delete(cb.dataset.id);
+    updateBulkBar();
+  }));
+  $$("#txnBody .rule-btn").forEach(btn => btn.addEventListener("click", () => openRuleRow(btn)));
   $$("#txnBody .cat-pick").forEach(sel => sel.addEventListener("change", async () => {
     await post("/api/transactions/" + encodeURIComponent(sel.dataset.id),
       { category_id: sel.value ? Number(sel.value) : null });
@@ -998,6 +1014,97 @@ async function loadIncome() {
   }));
 }
 
+/* ---- bulk select + rule-from-row ---- */
+function merchantKey(desc) {
+  let d = (desc || "").toLowerCase();
+  for (const pre of ["aplpay ", "apple pay ", "tst* ", "tst*", "spo*", "sq *", "paypal *", "orig co name:"])
+    if (d.startsWith(pre)) d = d.slice(pre.length);
+  d = d.replace(/[#*]?\d[\d\-\/:]*/g, " ").replace(/\s+/g, " ").trim();
+  return d.split(" ").filter(t => t.length > 1).slice(0, 2).join(" ");
+}
+function updateBulkBar() {
+  const n = state.selected ? state.selected.size : 0;
+  $("#bulkBar").hidden = n === 0;
+  $("#bulkCount").textContent = `${n} selected →`;
+  if (n && !$("#bulkCategory").options.length) $("#bulkCategory").innerHTML = catOptions(null);
+}
+$("#txnSelAll").addEventListener("change", e => {
+  $$("#txnBody .txn-sel").forEach(cb => { cb.checked = e.target.checked; e.target.checked ? state.selected.add(cb.dataset.id) : state.selected.delete(cb.dataset.id); });
+  updateBulkBar();
+});
+$("#btnBulkClear").addEventListener("click", () => { state.selected.clear(); $$("#txnBody .txn-sel").forEach(cb => cb.checked = false); $("#txnSelAll").checked = false; updateBulkBar(); });
+$("#btnBulkApply").addEventListener("click", async () => {
+  const cid = $("#bulkCategory").value ? Number($("#bulkCategory").value) : null;
+  const r = await post("/api/transactions/bulk", { ids: [...state.selected], category_id: cid });
+  toast(`${r.updated} transactions recategorized`);
+  refreshAll();
+});
+function openRuleRow(btn) {
+  const tr = btn.closest("tr");
+  const existing = tr.nextElementSibling;
+  if (existing && existing.classList.contains("rule-row")) { existing.remove(); return; }
+  const row = document.createElement("tr");
+  row.className = "rule-row";
+  row.innerHTML = `<td colspan="6"><div class="rule-form">
+      <span>Always categorize descriptions containing</span>
+      <input class="rf-pattern" value="${escapeHtml(merchantKey(btn.dataset.desc))}" style="width:200px">
+      <span>as</span><select class="rf-cat">${catOptions(btn.dataset.cat ? Number(btn.dataset.cat) : null)}</select>
+      <button class="btn btn-sm rf-go">Create rule &amp; apply</button>
+      <span class="note">Applies to every past and future match (manual edits are never overwritten).</span>
+    </div></td>`;
+  tr.after(row);
+  row.querySelector(".rf-go").addEventListener("click", async () => {
+    const pattern = row.querySelector(".rf-pattern").value.trim();
+    const cid = row.querySelector(".rf-cat").value;
+    if (!pattern || !cid) return toast("Pattern and category are required");
+    await post("/api/rules", { pattern, category_id: Number(cid), priority: 50 });
+    const r = await post("/api/rules/apply");
+    toast(`Rule added — ${r.changed} transactions updated`);
+    refreshAll();
+  });
+}
+
+/* ---- rule suggestions (Settings) ---- */
+async function loadRuleSuggestions() {
+  const s = await api("/api/rules/suggestions");
+  const el = $("#ruleSuggest");
+  if (!s.length) { el.innerHTML = '<p class="note">No repeat merchants waiting for a rule — nice.</p>'; return; }
+  el.innerHTML = `<p class="note"><b>Suggested rules</b> — merchants that keep landing in Miscellaneous or uncategorized, biggest first:</p>` +
+    s.map((g, i) => `<div class="suggest-row">
+      <span class="ex" title="${escapeHtml(g.example)}">${escapeHtml(g.example.slice(0, 34))} · ${g.count}× · ${fmtUSD(g.total)}</span>
+      <input class="sg-pattern" value="${escapeHtml(g.pattern)}" style="width:150px">
+      <select class="sg-cat">${catOptions(null)}</select>
+      <button class="btn btn-sm sg-go" data-i="${i}">Add rule</button>
+    </div>`).join("");
+  $$("#ruleSuggest .sg-go").forEach(btn => btn.addEventListener("click", async () => {
+    const row = btn.closest(".suggest-row");
+    const pattern = row.querySelector(".sg-pattern").value.trim(), cid = row.querySelector(".sg-cat").value;
+    if (!pattern || !cid) return toast("Pick a category first");
+    await post("/api/rules", { pattern, category_id: Number(cid), priority: 50 });
+    const r = await post("/api/rules/apply");
+    toast(`Rule added — ${r.changed} transactions updated`);
+    refreshAll();
+  }));
+}
+
+/* ---- office-day economics ---- */
+async function loadOfficeDays() {
+  const d = await api("/api/officedays");
+  $("#officeCard").hidden = !d.enabled;
+  if (!d.enabled) return;
+  const extra = d.office_spend - d.wfh_spend;
+  $("#officeDesc").textContent =
+    `Last ${d.weeks} weeks, using "${d.marker}" as your in-office marker: ${d.office_per_week} office days/week. ` +
+    `An office weekday runs ${fmtUSD(d.office_spend)} in variable spending vs ${fmtUSD(d.wfh_spend)} at home — ` +
+    `${extra >= 0 ? "about " + fmtUSD(extra) + " more" : "about " + fmtUSD(-extra) + " less"} per office day` +
+    ` (≈ ${fmtUSD(Math.abs(extra) * d.office_per_week * 4.33)}/month${extra >= 0 ? " for going in" : " saved by going in"}).`;
+  $("#officeTiles").innerHTML = [
+    { label: "Office days / week", value: d.office_per_week, hint: `${d.office_days} days in window` },
+    { label: "Office day spend", value: fmtUSD(d.office_spend), hint: `food, transport, groceries part: ${fmtUSD(d.office_cluster)}` },
+    { label: "Home day spend", value: fmtUSD(d.wfh_spend), hint: `same categories: ${fmtUSD(d.wfh_cluster)}` },
+  ].map(t => `<div class="tile"><div class="label">${t.label}</div><div class="value">${t.value}</div><div class="hint">${t.hint}</div></div>`).join("");
+}
+
 const SEV_ICON = { critical: "⛔", serious: "▲", warning: "●" };
 const SEV_LABEL = { critical: "Critical", serious: "Unusual", warning: "Check" };
 const FLAG_LABEL = { large: "Large outflow", duplicate: "Possible duplicate", new_merchant: "New merchant", uncategorized: "Uncategorized" };
@@ -1122,7 +1229,8 @@ function refreshAll() {
   loadIncome().catch(() => {});
   loadGambling().catch(() => {});
   loadPrefs().catch(() => {});
-  loadCategoriesAndRules().then(() => loadTransactions()).catch(() => {});
+  loadOfficeDays().catch(() => {});
+  loadCategoriesAndRules().then(() => { loadTransactions(); loadRuleSuggestions().catch(() => {}); }).catch(() => {});
 }
 
 $("#tabs").addEventListener("click", e => {
@@ -1151,6 +1259,7 @@ async function loadPrefs() {
   $("#prefDefer").value = p.k401_defer_pct;
   $("#prefMatch").value = p.k401_match_pct;
   $("#prefNames").value = p.display_names.map(([pat, name]) => `${pat} = ${name}`).join("\n");
+  $("#prefOffice").value = p.office_pattern || "";
 }
 $("#btnSavePrefs").addEventListener("click", async () => {
   const names = $("#prefNames").value.split("\n")
@@ -1160,6 +1269,7 @@ $("#btnSavePrefs").addEventListener("click", async () => {
     home_state: $("#prefState").value,
     k401_defer_pct: $("#prefDefer").value,
     k401_match_pct: $("#prefMatch").value,
+    office_pattern: $("#prefOffice").value,
     display_names: names,
   });
   $("#prefsStatus").textContent = "Saved ✓";

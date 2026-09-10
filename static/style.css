@@ -270,3 +270,14 @@ tr.total-row td { border-top: 1px solid var(--baseline); border-bottom: 0; }
   background: var(--ink); color: var(--surface); font-size: 13px; font-weight: 550;
   border-radius: 9px; padding: 9px 16px; z-index: 100; display: none;
 }
+
+/* ---------- bulk select & rule-from-row ---------- */
+.bulk-bar { display: flex; gap: 8px; align-items: center; padding: 6px 0 10px; font-size: 13px; color: var(--ink-2); }
+.bulk-bar select { font: inherit; font-size: 13px; color: var(--ink); background: var(--surface); border: 1px solid var(--border); border-radius: 8px; padding: 5px 8px; }
+tr.rule-row td { background: color-mix(in oklab, var(--grid) 35%, transparent); }
+.rule-form { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; font-size: 12.5px; color: var(--ink-2); }
+.rule-form input, .rule-form select { font: inherit; font-size: 12.5px; color: var(--ink); background: var(--surface); border: 1px solid var(--border); border-radius: 7px; padding: 4px 8px; }
+.rule-btn { opacity: 0.55; } tr:hover .rule-btn { opacity: 1; }
+.suggest-row { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; padding: 6px 0; border-bottom: 1px solid var(--grid); font-size: 12.5px; }
+.suggest-row .ex { color: var(--muted); min-width: 220px; }
+.suggest-row input, .suggest-row select { font: inherit; font-size: 12.5px; color: var(--ink); background: var(--surface); border: 1px solid var(--border); border-radius: 7px; padding: 4px 8px; }
