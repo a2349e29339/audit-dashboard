@@ -1858,6 +1858,7 @@ GAMBLING_PLATFORMS = [
     ("fanduel", "FanDuel"), ("prizepicks", "PrizePicks"), ("from: prize", "PrizePicks"),
     ("from: chalk", "Chalk"), ("underdog", "Underdog"), ("hard rock", "Hard Rock Bet"),
     ("fliff", "Fliff"), ("caesars", "Caesars"), ("bet365", "bet365"), ("stake.", "Stake"),
+    ("dabble", "Dabble"), ("sleeper", "Sleeper"),
 ]
 
 
