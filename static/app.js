@@ -52,7 +52,8 @@ function rangeDates(key) {
   }
 }
 
-async function api(path, opts) {
+async function api(path, opts = {}) {
+  opts.headers = Object.assign({ "X-Audit-Request": "1" }, opts.headers || {});
   const r = await fetch(path, opts);
   const data = await r.json().catch(() => ({}));
   if (!r.ok) throw new Error(data.error || `${r.status}`);
@@ -190,7 +191,7 @@ function renderCategoryBars(container, byCat) {
     svg.appendChild(val);
     const hit = svgEl("rect", { x: 0, y: pad.t + i * rowH, width: W, height: rowH, fill: "transparent" });
     hit.addEventListener("mousemove", e =>
-      showTip(`<div class="t-title">${r.category}</div><div class="t-row"><span>Spent</span><b>${fmtUSDc(r.amount)}</b></div>`, e.clientX, e.clientY));
+      showTip(`<div class="t-title">${escapeHtml(r.category)}</div><div class="t-row"><span>Spent</span><b>${fmtUSDc(r.amount)}</b></div>`, e.clientX, e.clientY));
     hit.addEventListener("mouseleave", hideTip);
     hit.style.cursor = "pointer";
     hit.addEventListener("click", () => {
@@ -438,7 +439,7 @@ async function loadOverview() {
 function catOptions(selected) {
   const groups = { income: [], expense: [], transfer: [] };
   for (const c of state.categories) groups[c.kind]?.push(c);
-  const opt = c => `<option value="${c.id}"${c.id === selected ? " selected" : ""}>${c.name}</option>`;
+  const opt = c => `<option value="${c.id}"${c.id === selected ? " selected" : ""}>${escapeHtml(c.name)}</option>`;
   return `<option value=""${selected == null ? " selected" : ""}>— none —</option>` +
     `<optgroup label="Expenses">${groups.expense.map(opt).join("")}</optgroup>` +
     `<optgroup label="Income">${groups.income.map(opt).join("")}</optgroup>` +
@@ -1189,13 +1190,13 @@ async function loadCategoriesAndRules() {
   const catSel = $("#txnCategory");
   const cur = catSel.value;
   catSel.innerHTML = '<option value="">All categories</option><option value="uncategorized">Uncategorized</option>' +
-    state.categories.map(c => `<option value="${c.id}">${c.name}</option>`).join("");
+    state.categories.map(c => `<option value="${c.id}">${escapeHtml(c.name)}</option>`).join("");
   catSel.value = cur;
-  $("#ruleCategory").innerHTML = state.categories.map(c => `<option value="${c.id}">${c.name}</option>`).join("");
+  $("#ruleCategory").innerHTML = state.categories.map(c => `<option value="${c.id}">${escapeHtml(c.name)}</option>`).join("");
 
   const rules = await api("/api/rules");
   $("#rulesBody").innerHTML = rules.map(r => `
-    <tr><td><code>${escapeHtml(r.pattern)}</code></td><td>${r.category}</td>
+    <tr><td><code>${escapeHtml(r.pattern)}</code></td><td>${escapeHtml(r.category)}</td>
         <td class="num" style="text-align:left">${r.priority}</td>
         <td><button class="btn secondary btn-sm" data-delrule="${r.id}">Delete</button></td></tr>`).join("");
   $$("#rulesBody [data-delrule]").forEach(btn => btn.addEventListener("click", async () => {

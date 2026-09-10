@@ -22,6 +22,25 @@ from db import connect, init_db, categorize_transaction
 app = Flask(__name__, static_folder="static")
 init_db()
 
+LOCAL_HOSTS = ("localhost", "127.0.0.1", "[::1]")
+
+
+@app.before_request
+def _local_only_guard():
+    """Defense for a localhost app: refuse requests whose Host header isn't a
+    local address (blocks DNS-rebinding reads) and require a custom header on
+    state-changing calls (blocks cross-site form/fetch POSTs from other sites —
+    browsers won't add custom headers cross-origin without CORS, which we
+    never grant)."""
+    host = (request.host or "").split(":")[0]
+    if host not in LOCAL_HOSTS:
+        return jsonify({"error": "local access only"}), 403
+    origin = request.headers.get("Origin")
+    if origin and origin.split("//")[-1].split(":")[0] not in LOCAL_HOSTS:
+        return jsonify({"error": "cross-origin request refused"}), 403
+    if request.method in ("POST", "PUT", "DELETE") and request.headers.get("X-Audit-Request") != "1":
+        return jsonify({"error": "missing X-Audit-Request header"}), 403
+
 SPEND_TYPES = ("checking", "savings", "credit", "unknown")  # accounts that feed cash-flow math
 
 
